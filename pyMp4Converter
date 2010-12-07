@@ -1,0 +1,43 @@
+#!/usr/bin/python
+
+import sys
+import argparse
+
+
+DEFAULT_ARGS = '-f mp4 -y -vcodec libxvid -maxrate 1000 -mbd 2 -qmin 3 -qmax 5 -g 300 -acodec libfaac'
+DEFAULT_BUFSIZE = '4096k'
+DEFAULT_AUDIO_BITRATE = '128k'
+DEFAULT_VIDEO_BITRATE = '400k'
+IPOD_WIDTH = 320.0
+IPOD_HEIGHT = 240.0
+IPHONE_WIDTH = 480.0
+IPHONE_HEIGHT = 320.03
+
+opts = argparse.ArgumentParser(
+    description = 'Converter to MP4',
+    epilog = 'made by CDuke')
+opts.add_argument('-V','--version',
+                  action = 'version',
+                  version = '0.0.1')
+opts.add_argument('-v', '--verbose',
+                  action = 'store_true',
+                  default = False,
+                  help = 'verbose')
+opts.add_argument('-a', '--audio',
+                  dest = 'AUDIO_BITRATE',
+                  default = DEFAULT_AUDIO_BITRATE,
+                  help = 'override default audio bitrate {0}'.format(DEFAULT_AUDIO_BITRATE))
+opts.add_argument('-b', '--video',
+                  dest = 'VIDEO_BITRATE',
+                  default = DEFAULT_VIDEO_BITRATE,
+                  help = 'override default video bitrate {0}'.format(DEFAULT_VIDEO_BITRATE))
+opts.add_argument('-d', '--device',
+                  choices = ['ipod', 'iphone'],
+                  default = 'ipod',
+                  help = 'device that will play video')
+opts.add_argument('-o', '--outdir',
+                  help = 'write files to given directory')
+opts.add_argument('file',
+                  help = 'file that will be converted')
+
+opts.parse_args()
