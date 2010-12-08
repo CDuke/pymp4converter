@@ -1,5 +1,19 @@
 #!/usr/bin/python
 
+# Copyright (C) 2007-2010 CDuke
+# This program is free software. You may distribute it under the terms of
+# the GNU General Public License as published by the Free Software
+# Foundation, version 2.
+#
+# This program is distributed in the hope that it will be useful, but
+
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+# Public License for more details.
+#
+# This program converts video files to mp4, suitable to be played on an iPod
+# or an iPhone. It is careful about maintaining the proper aspect ratio.
+
 import sys
 import argparse
 
@@ -8,10 +22,19 @@ DEFAULT_ARGS = '-f mp4 -y -vcodec libxvid -maxrate 1000 -mbd 2 -qmin 3 -qmax 5 -
 DEFAULT_BUFSIZE = '4096k'
 DEFAULT_AUDIO_BITRATE = '128k'
 DEFAULT_VIDEO_BITRATE = '400k'
-IPOD_WIDTH = 320.0
-IPOD_HEIGHT = 240.0
-IPHONE_WIDTH = 480.0
-IPHONE_HEIGHT = 320.03
+
+class device:
+    '''Describe properties of device'''
+    def __init__(self, name, width, height):
+        self.name = name
+        self.width = width
+        self.height = height
+
+devices = [device('ipod', 320.0, 240.0), device('iphone', 480.0, 320.03)]
+
+class mp4Converter(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string = None):
+        print('file converted')
 
 opts = argparse.ArgumentParser(
     description = 'Converter to MP4',
@@ -32,12 +55,13 @@ opts.add_argument('-b', '--video',
                   default = DEFAULT_VIDEO_BITRATE,
                   help = 'override default video bitrate {0}'.format(DEFAULT_VIDEO_BITRATE))
 opts.add_argument('-d', '--device',
-                  choices = ['ipod', 'iphone'],
+                  choices = [d.name for d in devices],
                   default = 'ipod',
                   help = 'device that will play video')
 opts.add_argument('-o', '--outdir',
                   help = 'write files to given directory')
 opts.add_argument('file',
+                  action = mp4Converter,
                   help = 'file that will be converted')
 
 opts.parse_args()
