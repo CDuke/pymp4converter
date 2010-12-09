@@ -16,12 +16,15 @@
 
 import sys
 import argparse
-
+import os
+import re
+from subprocess import Popen, PIPE
 
 DEFAULT_ARGS = '-f mp4 -y -vcodec libxvid -maxrate 1000 -mbd 2 -qmin 3 -qmax 5 -g 300 -acodec libfaac'
 DEFAULT_BUFSIZE = '4096k'
 DEFAULT_AUDIO_BITRATE = '128k'
 DEFAULT_VIDEO_BITRATE = '400k'
+FFMPEG = '/usr/bin/ffmpeg'
 
 class device:
     '''Describe properties of device'''
@@ -30,11 +33,73 @@ class device:
         self.width = width
         self.height = height
 
+class videoFileInfo:
+    def __init__(self, width, height, duration):
+        self.width = width
+        self.height = height
+        self.duration = duration
+
 devices = [device('ipod', 320.0, 240.0), device('iphone', 480.0, 320.03)]
+
+def getOutputFileName(inputFileName, outDir):
+    if outDir == None:
+        outFileName = os.path.splitext(inputFileName)[0] + '.mp4'
+    else:
+        outFileName = os.path.join(outDir, os.path.basename(inputFileName))
+    return outFileName
+
+def getVideoFileInfo(fileName):
+    p = Popen([FFMPEG, '-i', fileName], stdout = PIPE, stderr = PIPE)
+    fileInfo = p.communicate()[1]
+    videoRes = re.search('Video:.+ (\d+)x(\d+)', fileInfo)
+    w = float(videoRes.group(1))
+    h = float(videoRes.group(2))
+    fileInfo = videoFileInfo(w, h, 0)
+    return fileInfo
+
+def getArguments(width, height, aspect):
+    args = {}
+    w = int(width)
+    h = int(w / aspect)
+    h -= (h % 2)
+    pad = int((height - h) / 2.0)
+    pad -= (pad % 2)
+    padarg1, padarg2 = "padtop", "padbottom"
+
+  # recalculate using the height as the baseline rather than the width
+    if pad < 0:
+        h = int(height)
+        w = int(h * aspect)
+        width -= (width % 2)
+        pad = int((width - w)/2.0)
+        pad -= (pad % 2)
+        padarg1, padarg2 = "padleft", "padright"
+
+    args['width'] = w
+    args['height'] = h
+    args['padarg1'] = padarg1
+    args['padarg2'] = padarg2
+    args['pad'] = pad
+
+    return args
+
+def convert(inputFileName, outputFileName):
+    pass
 
 class mp4Converter(argparse.Action):
     def __call__(self, parser, namespace, values, option_string = None):
-        print('file converted')
+        outdir = namespace.outdir
+        for f in values:
+            outFileName = getOutputFileName(f.name, outdir)
+            fileInfo = getVideoFileInfo(f.name)
+            print(fileInfo.width, fileInfo.height)
+            aspect = fileInfo.width / fileInfo.height
+            dev = (d for d in devices if d.name == namespace.device).next()
+            print(dev)
+            args = getArguments(dev.width, dev.height, aspect)
+            print(args)
+            convert(f.name, outFileName)
+            print('file "{0}" converted'.format(f.name))
 
 opts = argparse.ArgumentParser(
     description = 'Converter to MP4',
@@ -61,6 +126,8 @@ opts.add_argument('-d', '--device',
 opts.add_argument('-o', '--outdir',
                   help = 'write files to given directory')
 opts.add_argument('file',
+                  nargs = '+',
+                  type = file,
                   action = mp4Converter,
                   help = 'file that will be converted')
 
