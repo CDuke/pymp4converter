@@ -18,9 +18,12 @@ import sys
 import argparse
 import os
 import re
+import shlex
 from subprocess import Popen, PIPE
 
-DEFAULT_ARGS = '-f mp4 -y -vcodec libxvid -maxrate 1000 -mbd 2 -qmin 3 -qmax 5 -g 300 -acodec libfaac'
+DEFAULT_ARGS = '-f mp4 -y -vcodec libxvid -maxrate 1000k -mbd 2 -qmin 3 -qmax 5 -g 300 -acodec libfaac -flags +mv4 -trellis 2 -cmp 2 -subcmp 2'
+#DEFAULT_ARGS = '-f mp4 -y -vcodec mpeg4 -maxrate 1000k -mbd 2 -qmin 3 -qmax 5 -g 300 -acodec libfaac -flags +mv4 -trellis 2 -cmp 2 -subcmp 2'
+#DEFAULT_ARGS = '-y -f mp4 -vcodec libxvid -acodec libfaac'
 DEFAULT_BUFSIZE = '4096k'
 DEFAULT_AUDIO_BITRATE = '128k'
 DEFAULT_VIDEO_BITRATE = '400k'
@@ -39,7 +42,8 @@ class videoFileInfo:
         self.height = height
         self.duration = duration
 
-devices = [device('ipod', 320.0, 240.0), device('iphone', 480.0, 320.03)]
+devices = [device('ipod', 320, 240), device('iphone', 480, 320),
+device('desire', 800, 480)]
 
 def getOutputFileName(inputFileName, outDir):
     if outDir == None:
@@ -54,7 +58,12 @@ def getVideoFileInfo(fileName):
     videoRes = re.search('Video:.+ (\d+)x(\d+)', fileInfo)
     w = float(videoRes.group(1))
     h = float(videoRes.group(2))
-    fileInfo = videoFileInfo(w, h, 0)
+    duratMatch = re.search('Duration:\s+(\d+):(\d+):(\d+)\.(\d+)', fileInfo)
+    duration = float(duratMatch.group(1)) * 3600
+    duration += float(duratMatch.group(2)) * 60
+    duration += float(duratMatch.group(3))
+    duration += float(duratMatch.group(4)) / 10
+    fileInfo = videoFileInfo(w, h, duration)
     return fileInfo
 
 def getArguments(width, height, aspect):
@@ -62,18 +71,18 @@ def getArguments(width, height, aspect):
     w = int(width)
     h = int(w / aspect)
     h -= (h % 2)
-    pad = int((height - h) / 2.0)
-    pad -= (pad % 2)
-    padarg1, padarg2 = "padtop", "padbottom"
-
-  # recalculate using the height as the baseline rather than the width
-    if pad < 0:
+    if h <= height:
+        pad = int((height - h) / 2)
+        padarg1, padarg2 = "padtop", "padbottom"
+    else:
+        # recalculate using the height as the baseline rather than the width
         h = int(height)
         w = int(h * aspect)
         width -= (width % 2)
-        pad = int((width - w)/2.0)
-        pad -= (pad % 2)
+        pad = int((width - w)/2)
         padarg1, padarg2 = "padleft", "padright"
+
+    pad -= (pad % 2)
 
     args['width'] = w
     args['height'] = h
@@ -83,8 +92,11 @@ def getArguments(width, height, aspect):
 
     return args
 
-def convert(inputFileName, outputFileName):
-    pass
+def convert(inputFileName, outputFileName, args, audioBitrate, videoBitrate, devWidth, devHeight):
+    cmd = '{ffmpeg} -i {inFile} {defaultArgs} -bufsize {bufsize} -s {width}x{height} -vf pad={devWidth}:{devHeight} -ab {audioBitrate} -b {videoBitrate} {outFile}'.format(ffmpeg=FFMPEG, inFile=inputFileName, defaultArgs=DEFAULT_ARGS, bufsize=DEFAULT_BUFSIZE, devWidth=devWidth, devHeight=devHeight, width=args['width'], height=args['height'], audioBitrate=audioBitrate, videoBitrate=videoBitrate, outFile=outputFileName)
+#    cmd = '{ffmpeg} -i {inFile} {defaultArgs} -bufsize {bufsize} -s {width}x{height} -ab {audioBitrate} -b {videoBitrate} {outFile}'.format(ffmpeg=FFMPEG, inFile=inputFileName, defaultArgs=DEFAULT_ARGS, bufsize=DEFAULT_BUFSIZE, width=args['width'], height=args['height'], audioBitrate=audioBitrate, videoBitrate=videoBitrate, outFile=outputFileName)
+    print(cmd)
+    conv = Popen(shlex.split(cmd))
 
 class mp4Converter(argparse.Action):
     def __call__(self, parser, namespace, values, option_string = None):
@@ -92,13 +104,10 @@ class mp4Converter(argparse.Action):
         for f in values:
             outFileName = getOutputFileName(f.name, outdir)
             fileInfo = getVideoFileInfo(f.name)
-            print(fileInfo.width, fileInfo.height)
             aspect = fileInfo.width / fileInfo.height
             dev = (d for d in devices if d.name == namespace.device).next()
-            print(dev)
             args = getArguments(dev.width, dev.height, aspect)
-            print(args)
-            convert(f.name, outFileName)
+            convert(f.name, outFileName, args, namespace.AUDIO_BITRATE, namespace.VIDEO_BITRATE, dev.width, dev.height)
             print('file "{0}" converted'.format(f.name))
 
 opts = argparse.ArgumentParser(
