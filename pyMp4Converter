@@ -14,15 +14,18 @@
 # This program converts video files to mp4, suitable to be played on an iPod
 # or an iPhone. It is careful about maintaining the proper aspect ratio.
 
+from __future__ import division
+from datetime import datetime
 import sys
 import argparse
 import os
 import re
 import shlex
+import time
 from subprocess import Popen, PIPE
 
-DEFAULT_ARGS = '-f mp4 -y -vcodec libxvid -maxrate 1000k -mbd 2 -qmin 3 -qmax 5 -g 300 -acodec libfaac -flags +mv4 -trellis 2 -cmp 2 -subcmp 2'
-#DEFAULT_ARGS = '-f mp4 -y -vcodec mpeg4 -maxrate 1000k -mbd 2 -qmin 3 -qmax 5 -g 300 -acodec libfaac -flags +mv4 -trellis 2 -cmp 2 -subcmp 2'
+DEFAULT_ARGS = '-f mp4 -y -vcodec libxvid -maxrate 1000k -mbd 2 -qmin 3 -qmax 5 -g 300 -bf 0 -acodec libfaac -ac 2 -flags +mv4 -trellis 2 -cmp 2 -subcmp 2'
+#DEFAULT_ARGS = '-f mp4 -y -vcodec mpeg4 -vtag xvid -maxrate 1000k -mbd 2 -qmin 3 -qmax 5 -g 300 -bf 0 -acodec libfaac -ac 2 -r 30000/1001 -flags +mv4 -trellis 2 -cmp 2 -subcmp 2'
 #DEFAULT_ARGS = '-y -f mp4 -vcodec libxvid -acodec libfaac'
 DEFAULT_BUFSIZE = '4096k'
 DEFAULT_AUDIO_BITRATE = '128k'
@@ -55,10 +58,10 @@ def getOutputFileName(inputFileName, outDir):
 def getVideoFileInfo(fileName):
     p = Popen([FFMPEG, '-i', fileName], stdout = PIPE, stderr = PIPE)
     fileInfo = p.communicate()[1]
-    videoRes = re.search('Video:.+ (\d+)x(\d+)', fileInfo)
+    videoRes = re.search(b'Video:.+ (\d+)x(\d+)', fileInfo)
     w = float(videoRes.group(1))
     h = float(videoRes.group(2))
-    duratMatch = re.search('Duration:\s+(\d+):(\d+):(\d+)\.(\d+)', fileInfo)
+    duratMatch = re.search(b'Duration:\s+(\d+):(\d+):(\d+)\.(\d+)', fileInfo)
     duration = float(duratMatch.group(1)) * 3600
     duration += float(duratMatch.group(2)) * 60
     duration += float(duratMatch.group(3))
@@ -68,35 +71,56 @@ def getVideoFileInfo(fileName):
 
 def getArguments(width, height, aspect):
     args = {}
-    w = int(width)
-    h = int(w / aspect)
+    w = width
+    h = w // aspect
     h -= (h % 2)
     if h <= height:
-        pad = int((height - h) / 2)
-        padarg1, padarg2 = "padtop", "padbottom"
+        pad = (height - h) // 2
+        pad -= (pad % 2)
+        pady = pad
+        padx = 0
     else:
         # recalculate using the height as the baseline rather than the width
-        h = int(height)
+        h = height
         w = int(h * aspect)
         width -= (width % 2)
-        pad = int((width - w)/2)
-        padarg1, padarg2 = "padleft", "padright"
-
-    pad -= (pad % 2)
+        pad = (width - w) // 2
+        pad -= (pad % 2)
+        padx = pad
+        pady = 0
 
     args['width'] = w
     args['height'] = h
-    args['padarg1'] = padarg1
-    args['padarg2'] = padarg2
-    args['pad'] = pad
-
+    args['padx'] = padx
+    args['pady'] = pady
     return args
 
-def convert(inputFileName, outputFileName, args, audioBitrate, videoBitrate, devWidth, devHeight):
-    cmd = '{ffmpeg} -i {inFile} {defaultArgs} -bufsize {bufsize} -s {width}x{height} -vf pad={devWidth}:{devHeight} -ab {audioBitrate} -b {videoBitrate} {outFile}'.format(ffmpeg=FFMPEG, inFile=inputFileName, defaultArgs=DEFAULT_ARGS, bufsize=DEFAULT_BUFSIZE, devWidth=devWidth, devHeight=devHeight, width=args['width'], height=args['height'], audioBitrate=audioBitrate, videoBitrate=videoBitrate, outFile=outputFileName)
+def convert(inputFileName, outputFileName, args, audioBitrate, videoBitrate, devWidth, devHeight, aspect, duration):
+    cmd = '{ffmpeg} -i {inFile} {defaultArgs} -bufsize {bufsize} -s {width}x{height} -vf "pad={devWidth}:{devHeight}:{padx}:{pady},aspect={aspect}" -ab {audioBitrate} -b {videoBitrate} {outFile}'.format(ffmpeg=FFMPEG, inFile=inputFileName, defaultArgs=DEFAULT_ARGS, bufsize=DEFAULT_BUFSIZE, devWidth=devWidth, devHeight=devHeight, padx=args['padx'], pady=args['pady'], width=args['width'], height=args['height'], aspect=aspect, audioBitrate=audioBitrate, videoBitrate=videoBitrate, outFile=outputFileName)
 #    cmd = '{ffmpeg} -i {inFile} {defaultArgs} -bufsize {bufsize} -s {width}x{height} -ab {audioBitrate} -b {videoBitrate} {outFile}'.format(ffmpeg=FFMPEG, inFile=inputFileName, defaultArgs=DEFAULT_ARGS, bufsize=DEFAULT_BUFSIZE, width=args['width'], height=args['height'], audioBitrate=audioBitrate, videoBitrate=videoBitrate, outFile=outputFileName)
     print(cmd)
-    conv = Popen(shlex.split(cmd))
+    start = datetime.today()
+    print('Converting started at ' + str(start))
+    conv = Popen(shlex.split(cmd), shell=False, stdout=PIPE, stderr=PIPE)
+    convInfo = 'Converted: {:.2%}\r'
+    while conv.poll() is None:
+       out = os.read(conv.stderr.fileno(), 2048)
+       last = out.splitlines()[-1]
+       timeMatch = re.search(b'time=([^\s]+)', last)
+       if timeMatch:
+           timeDone = float(timeMatch.group(1))
+           if sys.version_info > (3, 0):
+               exec("print(convInfo.format(timeDone / duration), end=' ')")
+           else:
+               exec("print convInfo.format(timeDone / duration),")
+           sys.stdout.flush()
+#       else:
+#           print(out)
+       time.sleep(0.5)
+    print(convInfo.format(1))
+    end = datetime.today()
+    print('Converting ended at ' + str(end))
+    print('Spended time: ' + str(end - start))
 
 class mp4Converter(argparse.Action):
     def __call__(self, parser, namespace, values, option_string = None):
@@ -105,14 +129,14 @@ class mp4Converter(argparse.Action):
             outFileName = getOutputFileName(f.name, outdir)
             fileInfo = getVideoFileInfo(f.name)
             aspect = fileInfo.width / fileInfo.height
-            dev = (d for d in devices if d.name == namespace.device).next()
+            dev = next(d for d in devices if d.name == namespace.device)
             args = getArguments(dev.width, dev.height, aspect)
-            convert(f.name, outFileName, args, namespace.AUDIO_BITRATE, namespace.VIDEO_BITRATE, dev.width, dev.height)
-            print('file "{0}" converted'.format(f.name))
+            convert(f.name, outFileName, args, namespace.AUDIO_BITRATE, namespace.VIDEO_BITRATE, dev.width, dev.height, aspect, fileInfo.duration)
+            print('file "{0}" converted successful'.format(f.name))
 
 opts = argparse.ArgumentParser(
     description = 'Converter to MP4',
-    epilog = 'made by CDuke')
+    epilog = 'made by CDuke 2010')
 opts.add_argument('-V','--version',
                   action = 'version',
                   version = '0.0.1')
@@ -136,7 +160,7 @@ opts.add_argument('-o', '--outdir',
                   help = 'write files to given directory')
 opts.add_argument('file',
                   nargs = '+',
-                  type = file,
+                  type = argparse.FileType('r'),
                   action = mp4Converter,
                   help = 'file that will be converted')
 
