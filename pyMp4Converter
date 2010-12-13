@@ -95,29 +95,36 @@ def getArguments(width, height, aspect):
     args['pady'] = pady
     return args
 
+def getProgressBar(perc):
+    convInfo = 'Converted: [{}] {:.2%} \r'
+    num_hashes = int(perc * 100 // 2)
+    bar = '=' * num_hashes + ' ' * (50 - num_hashes)
+    return convInfo.format(bar, perc)
+
 def convert(inputFileName, outputFileName, args, audioBitrate, videoBitrate, devWidth, devHeight, aspect, duration):
     cmd = '{ffmpeg} -i {inFile} {defaultArgs} -bufsize {bufsize} -s {width}x{height} -vf "pad={devWidth}:{devHeight}:{padx}:{pady},aspect={aspect}" -ab {audioBitrate} -b {videoBitrate} {outFile}'.format(ffmpeg=FFMPEG, inFile=inputFileName, defaultArgs=DEFAULT_ARGS, bufsize=DEFAULT_BUFSIZE, devWidth=devWidth, devHeight=devHeight, padx=args['padx'], pady=args['pady'], width=args['width'], height=args['height'], aspect=aspect, audioBitrate=audioBitrate, videoBitrate=videoBitrate, outFile=outputFileName)
 #    cmd = '{ffmpeg} -i {inFile} {defaultArgs} -bufsize {bufsize} -s {width}x{height} -ab {audioBitrate} -b {videoBitrate} {outFile}'.format(ffmpeg=FFMPEG, inFile=inputFileName, defaultArgs=DEFAULT_ARGS, bufsize=DEFAULT_BUFSIZE, width=args['width'], height=args['height'], audioBitrate=audioBitrate, videoBitrate=videoBitrate, outFile=outputFileName)
     print(cmd)
+    print()
     start = datetime.today()
     print('Converting started at ' + str(start))
     conv = Popen(shlex.split(cmd), shell=False, stdout=PIPE, stderr=PIPE)
-    convInfo = 'Converted: {:.2%}\r'
     while conv.poll() is None:
        out = os.read(conv.stderr.fileno(), 2048)
        last = out.splitlines()[-1]
        timeMatch = re.search(b'time=([^\s]+)', last)
        if timeMatch:
            timeDone = float(timeMatch.group(1))
+           perc = timeDone / duration
            if sys.version_info > (3, 0):
-               exec("print(convInfo.format(timeDone / duration), end=' ')")
+               exec("print(getProgressBar(perc), end=' ')")
            else:
-               exec("print convInfo.format(timeDone / duration),")
+               exec("print getProgressBar(perc),")
            sys.stdout.flush()
 #       else:
 #           print(out)
        time.sleep(0.5)
-    print(convInfo.format(1))
+    print(getProgressBar(1))
     end = datetime.today()
     print('Converting ended at ' + str(end))
     print('Spended time: ' + str(end - start))
