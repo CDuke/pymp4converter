@@ -97,7 +97,7 @@ def getArguments(width, height, aspect):
 
 def getProgressBar(perc):
     convInfo = 'Converted: [{}] {:.2%} \r'
-    num_hashes = int(perc * 100 // 2)
+    num_hashes = round(perc * 100 // 2)
     bar = '=' * num_hashes + ' ' * (50 - num_hashes)
     return convInfo.format(bar, perc)
 
@@ -117,7 +117,7 @@ def convert(inputFileName, outputFileName, args, audioBitrate, videoBitrate, dev
            timeDone = float(timeMatch.group(1))
            perc = timeDone / duration
            if sys.version_info > (3, 0):
-               exec("print(getProgressBar(perc), end=' ')")
+               exec("print(getProgressBar(perc), end='')")
            else:
                exec("print getProgressBar(perc),")
            sys.stdout.flush()
